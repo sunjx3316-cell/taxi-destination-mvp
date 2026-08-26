@@ -56,6 +56,9 @@ textarea { min-height:112px; resize:vertical; }
 .route-option strong span { display:inline-block; margin-left:7px; padding:2px 6px; color:#067347; border-radius:999px; background:#def7ec; font-size:.72rem; }
 .route-option small { margin-top:5px; color:var(--muted); }
 .route-option.selected { border:2px solid var(--brand); background:#f1fff8; }
+.route-option .candidate-actions { margin-bottom:0; }
+.route-map-button { width:100%; min-height:42px; margin-top:10px; color:var(--brand); border:1px solid var(--line); border-radius:10px; background:#fff; font-weight:750; }
+.driver-route-map .map-preview { margin-top:10px; }
 .route-summary { margin-top:12px; padding:10px 12px; border-radius:11px; background:#f1fff8; }
 .route-summary strong,.route-summary span { display:block; }
 .route-summary strong { color:#075c40; font-size:.9rem; }

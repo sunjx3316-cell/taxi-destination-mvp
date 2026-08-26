@@ -18,9 +18,10 @@ function safeDestination(value) {
     distanceText: text(value.route.distanceText).slice(0, 40),
     durationText: text(value.route.durationText).slice(0, 40),
     tollsText: text(value.route.tollsText).slice(0, 40),
-    strategy: Number.isSafeInteger(Number(value.route.strategy)) ? Number(value.route.strategy) : null
+    strategy: Number.isSafeInteger(Number(value.route.strategy)) ? Number(value.route.strategy) : null,
+    polyline: text(value.route.polyline).slice(0, 6000)
   } : null;
-  if (!route?.label || !route.distanceText || !route.durationText) throw new Error('请先规划并选择一条路线。');
+  if (!route?.label || !route.distanceText || !route.durationText || !route.polyline) throw new Error('请先规划并选择一条路线。');
   return { name: text(value.name || value.address).slice(0, 120), address: text(value.address).slice(0, 240), city: text(value.city).slice(0, 80), district: text(value.district).slice(0, 80), lat: Number.isFinite(lat) ? lat : null, lng: Number.isFinite(lng) ? lng : null, route, note: text(value.note).slice(0, 120), receivedAt: Date.now() };
 }
 
@@ -49,6 +50,48 @@ const durationText = (seconds) => {
   return minutes >= 60 ? `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分` : `${minutes} 分钟`;
 };
 
+function compactPolyline(value) {
+  const points = text(value).split(';').map((item) => item.trim()).filter((item) => /^-?\d{1,3}(?:\.\d+)?,-?\d{1,2}(?:\.\d+)?$/.test(item));
+  if (points.length < 2) return '';
+  const maxPoints = 180;
+  const stride = Math.max(1, Math.ceil(points.length / maxPoints));
+  const compacted = points.filter((_, index) => index % stride === 0 || index === points.length - 1);
+  return compacted.join(';').slice(0, 6000);
+}
+
+function routePolyline(path) {
+  const steps = path.steps || path.navi?.steps || [];
+  return compactPolyline(steps.map((step) => text(step.polyline || step.tmc_polyline)).filter(Boolean).join(';'));
+}
+
+async function staticMapImage(params) {
+  const key = process.env.AMAP_WEB_KEY;
+  if (!key) throw new Error('地图服务尚未配置。');
+  const url = new URL('https://restapi.amap.com/v3/staticmap');
+  url.searchParams.set('key', key);
+  Object.entries(params).forEach(([name, value]) => { if (value) url.searchParams.set(name, value); });
+  const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  if (!response.ok) throw new Error('地图预览暂不可用。');
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (bytes.length > 900000) throw new Error('地图预览过大，请稍后重试。');
+  return { imageDataUrl: `data:${response.headers.get('content-type') || 'image/png'};base64,${bytes.toString('base64')}` };
+}
+
+function routeBounds(polyline) {
+  const points = compactPolyline(polyline).split(';').map((item) => item.split(',').map(Number));
+  const lons = points.map(([lng]) => lng), lats = points.map(([, lat]) => lat);
+  const span = Math.max(Math.max(...lons) - Math.min(...lons), Math.max(...lats) - Math.min(...lats));
+  const zoom = span > .25 ? 10 : span > .1 ? 11 : span > .04 ? 12 : span > .015 ? 13 : 14;
+  return { center: `${((Math.max(...lons) + Math.min(...lons)) / 2).toFixed(6)},${((Math.max(...lats) + Math.min(...lats)) / 2).toFixed(6)}`, zoom };
+}
+
+async function routeMapPreview(polyline) {
+  const route = compactPolyline(polyline);
+  if (!route) throw new Error('该路线没有可绘制的地图数据。');
+  const points = route.split(';'); const bounds = routeBounds(route);
+  return staticMapImage({ location: bounds.center, zoom: bounds.zoom, size: '720*420', paths: `7,0x0B6E4F,1,0xFFFFFF,0:${route}`, markers: `small,0x0B6E4F,S:${points[0]}|small,0xC0392B,E:${points[points.length - 1]}` });
+}
+
 async function routeOptions(origin, destination) {
   const from = { lng: Number(origin?.lng), lat: Number(origin?.lat) };
   const to = { lng: Number(destination?.lng), lat: Number(destination?.lat) };
@@ -64,13 +107,18 @@ async function routeOptions(origin, destination) {
     const body = await amapRequestAt('v5/direction/driving', { origin: originText, destination: destinationText, strategy: strategy.value, show_fields: 'cost,navi' });
     const path = body.route?.paths?.[0];
     if (!path) throw new Error('路线服务未返回可用方案。');
-    const tolls = Number(path.tolls || 0);
+    const duration = Number(path.cost?.duration ?? path.duration ?? path.cost?.time ?? path.time);
+    if (!Number.isFinite(duration) || duration <= 0) throw new Error('路线服务未返回准确的预计时长。');
+    const tolls = Number(path.cost?.tolls ?? path.tolls ?? 0);
+    const polyline = routePolyline(path);
+    if (!polyline) throw new Error('路线服务未返回可绘制的线路。');
     return {
       label: strategy.label,
       strategy: strategy.value,
       distanceText: distanceText(path.distance),
-      durationText: durationText(path.duration),
-      tollsText: tolls > 0 ? `过路费约 ${tolls.toFixed(0)} 元` : ''
+      durationText: durationText(duration),
+      tollsText: tolls > 0 ? `过路费约 ${tolls.toFixed(0)} 元` : '',
+      polyline
     };
   }));
   const seen = new Set();
@@ -105,20 +153,7 @@ async function geocode(query) {
 async function mapPreview(lng, lat, name) {
   const longitude = Number(lng), latitude = Number(lat);
   if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) throw new Error('该地点没有可预览的坐标。');
-  const key = process.env.AMAP_WEB_KEY;
-  if (!key) throw new Error('地图服务尚未配置。');
-  const url = new URL('https://restapi.amap.com/v3/staticmap');
-  url.searchParams.set('key', key);
-  url.searchParams.set('location', `${longitude},${latitude}`);
-  url.searchParams.set('zoom', '16');
-  url.searchParams.set('size', '600*320');
-  url.searchParams.set('markers', `mid,,A:${longitude},${latitude}`);
-  url.searchParams.set('title', text(name).slice(0, 30));
-  const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
-  if (!response.ok) throw new Error('地图预览暂不可用。');
-  const bytes = Buffer.from(await response.arrayBuffer());
-  if (bytes.length > 900000) throw new Error('地图预览过大，请稍后重试。');
-  return { imageDataUrl: `data:${response.headers.get('content-type') || 'image/png'};base64,${bytes.toString('base64')}` };
+  return staticMapImage({ location: `${longitude},${latitude}`, zoom: '16', size: '600*320', markers: `mid,,A:${longitude},${latitude}`, title: text(name).slice(0, 30) });
 }
 
 async function getBoard(db, id) {
@@ -148,6 +183,7 @@ exports.main = async (event = {}) => {
       return { ok: true, ...(await geocode(address)) };
     }
     if (event.action === 'mapPreview') return { ok: true, ...(await mapPreview(event.lng, event.lat, event.name)) };
+    if (event.action === 'routeMapPreview') return { ok: true, ...(await routeMapPreview(event.polyline)) };
     if (event.action === 'routeOptions') return { ok: true, ...(await routeOptions(event.origin, event.destination)) };
 
     const id = text(event.boardId).toUpperCase();

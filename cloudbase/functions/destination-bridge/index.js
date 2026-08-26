@@ -60,6 +60,8 @@ function compactPolyline(value) {
 }
 
 function routePolyline(path) {
+  const wholePath = compactPolyline(path.polyline);
+  if (wholePath) return wholePath;
   const steps = path.steps || path.navi?.steps || [];
   return compactPolyline(steps.map((step) => text(step.polyline || step.tmc_polyline)).filter(Boolean).join(';'));
 }
@@ -104,7 +106,7 @@ async function routeOptions(origin, destination) {
   const originText = `${from.lng.toFixed(6)},${from.lat.toFixed(6)}`;
   const destinationText = `${to.lng.toFixed(6)},${to.lat.toFixed(6)}`;
   const results = await Promise.allSettled(strategies.map(async (strategy) => {
-    const body = await amapRequestAt('v5/direction/driving', { origin: originText, destination: destinationText, strategy: strategy.value, show_fields: 'cost,navi' });
+    const body = await amapRequestAt('v5/direction/driving', { origin: originText, destination: destinationText, strategy: strategy.value, show_fields: 'cost,polyline' });
     const path = body.route?.paths?.[0];
     if (!path) throw new Error('路线服务未返回可用方案。');
     const duration = Number(path.cost?.duration ?? path.duration ?? path.cost?.time ?? path.time);

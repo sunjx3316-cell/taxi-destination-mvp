@@ -1,6 +1,6 @@
 const app = document.querySelector('#app');
 const query = new URLSearchParams(location.search);
-const state = { boardId: query.get('board'), driver: null, candidate: null, messages: [] };
+const state = { boardId: query.get('board'), driver: null, candidate: null, route: null, messages: [] };
 const API_BASE_URL = String(window.DESTINATION_API_BASE_URL || '').replace(/\/$/, '');
 const CLOUDBASE_ENV = String(window.DESTINATION_CLOUDBASE_ENV || '').trim();
 const PUBLIC_WEB_URL = String(window.DESTINATION_PUBLIC_WEB_URL || '').replace(/\/$/, '');
@@ -36,6 +36,7 @@ function cloudPayload(url, options = {}) {
   if (options.method === 'POST' && target.pathname === '/api/boards') return { action: 'createBoard' };
   if (target.pathname === '/api/geocode') return { action: 'geocode', address: target.searchParams.get('address') || '' };
   if (target.pathname === '/api/map-preview') return { action: 'mapPreview', lng: target.searchParams.get('lng'), lat: target.searchParams.get('lat'), name: target.searchParams.get('name') || '' };
+  if (options.method === 'POST' && target.pathname === '/api/routes') return { action: 'routeOptions', origin: body.origin, destination: body.destination };
   if (options.method === 'DELETE' && parts[0] === 'api' && parts[1] === 'boards' && parts[3] === 'destination' && parts[4]) return { action: 'deleteDestination', boardId: parts[2], messageId: parts[4], driverToken: options.headers?.['x-driver-token'] || '' };
   if (parts[0] === 'api' && parts[1] === 'boards' && parts.length === 3) return { action: 'driverState', boardId: parts[2], driverToken: options.headers?.['x-driver-token'] || '' };
   if (options.method === 'POST' && parts[0] === 'api' && parts[1] === 'boards' && parts[3] === 'destination') return { action: 'sendDestination', boardId: parts[2], destination: body.destination };
@@ -93,7 +94,8 @@ function destinationMarkup(d, id) {
   const precise = Number.isFinite(d.lat) && Number.isFinite(d.lng);
   const encoded = esc(JSON.stringify(d));
   const buttons = [{ id: 'amap', label: '高德地图', primary: true }, { id: 'baidu', label: '百度地图' }, { id: 'tencent', label: '腾讯地图' }, ...(!isNativeAndroid() ? [{ id: 'apple', label: '苹果地图' }] : [])];
-  return `<article class="card destination"><div class="destination-title"><h2>${esc(d.name)}<span class="badge">${precise ? '已确认坐标' : '文字地址'}</span></h2><button class="delete-destination" data-delete-id="${Number(id)}" aria-label="删除此目的地">删除</button></div><p class="muted">${esc(d.address)}${d.city ? ` · ${esc(d.city)}` : ''}</p>${d.note ? `<p class="note">乘客备注：${esc(d.note)}</p>` : ''}<div class="map-grid">${buttons.map((item) => `<button class="map-button${item.primary ? ' primary-map' : ''}" data-map="${item.id}" data-destination="${encoded}">${item.label}</button>`).join('')}</div></article>`;
+  const route = d.route ? `<div class="route-summary"><strong>乘客已选路线：${esc(d.route.label)}</strong><span>${esc(d.route.distanceText)} · 预计 ${esc(d.route.durationText)}</span></div>` : '';
+  return `<article class="card destination"><div class="destination-title"><h2>${esc(d.name)}<span class="badge">${precise ? '已确认坐标' : '文字地址'}</span></h2><button class="delete-destination" data-delete-id="${Number(id)}" aria-label="删除此目的地">删除</button></div><p class="muted">${esc(d.address)}${d.city ? ` · ${esc(d.city)}` : ''}</p>${route}${d.note ? `<p class="note">乘客备注：${esc(d.note)}</p>` : ''}<div class="map-grid">${buttons.map((item) => `<button class="map-button${item.primary ? ' primary-map' : ''}" data-map="${item.id}" data-destination="${encoded}">${item.label}</button>`).join('')}</div></article>`;
 }
 
 function bindMaps() {
@@ -134,7 +136,7 @@ function renderCodeEntry(message = '') {
 
 function renderPassenger() {
   if (!state.boardId) return renderCodeEntry();
-  app.innerHTML = `${brand()}<p class="eyebrow">发送给司机</p><h1>目的地在哪儿？</h1><p class="lead">输入或粘贴地点、店名、地标或完整地址。系统会查找位置，不需要输入经纬度。</p><section class="card"><label for="address">目的地信息</label><textarea id="address" placeholder="输入地点名称、店名、地标或完整地址"></textarea><div class="row"><button class="ghost" id="paste">粘贴内容</button><span class="hint">补充城市、区县会更准确</span></div><button class="primary" id="search">查找位置</button><p id="search-status" class="status"></p><div id="candidates"></div><div id="map-preview"></div></section><section class="card"><label for="note">给司机的补充说明（可选）</label><input id="note" maxlength="120" placeholder="例如：从东门进入" /></section><button class="primary" id="send" disabled>确认位置后发送</button><p class="footer-note">可先查看地图确认位置。发送后司机会在接收列表中看到目的地。</p>`;
+  app.innerHTML = `${brand()}<p class="eyebrow">发送给司机</p><h1>目的地在哪儿？</h1><p class="lead">输入或粘贴地点、店名、地标或完整地址。系统会查找位置，不需要输入经纬度。</p><section class="card"><label for="address">目的地信息</label><textarea id="address" placeholder="输入地点名称、店名、地标或完整地址"></textarea><div class="row"><button class="ghost" id="paste">粘贴内容</button><span class="hint">补充城市、区县会更准确</span></div><button class="primary" id="search">查找位置</button><p id="search-status" class="status"></p><div id="candidates"></div><div id="map-preview"></div><div id="route-options"></div></section><section class="card"><label for="note">给司机的补充说明（可选）</label><input id="note" maxlength="120" placeholder="例如：从东门进入" /></section><button class="primary" id="send" disabled>选择路线后发送给司机</button><p class="footer-note">路线仅使用你的当前位置计算；同步给司机的是你选择的路线偏好、距离和预计时长。</p>`;
   document.querySelector('#paste').onclick = pasteAddress;
   document.querySelector('#search').onclick = searchAddress;
   document.querySelector('#send').onclick = sendDestination;
@@ -144,8 +146,44 @@ async function pasteAddress() { const s = document.querySelector('#search-status
 
 function selectCandidate(candidate, card) {
   document.querySelectorAll('.candidate').forEach((el) => el.classList.remove('selected'));
-  card?.classList.add('selected'); state.candidate = candidate;
-  document.querySelector('#send').disabled = false; document.querySelector('#search-status').textContent = '位置已确认，可以发送给司机。';
+  card?.classList.add('selected'); state.candidate = candidate; state.route = null;
+  document.querySelector('#send').disabled = true; document.querySelector('#send').textContent = '选择路线后发送给司机'; document.querySelector('#search-status').textContent = '位置已确认。请规划并选择一条路线。';
+  renderRoutePlanner();
+}
+
+function renderRoutePlanner() {
+  const holder = document.querySelector('#route-options');
+  if (!state.candidate || !Number.isFinite(state.candidate.lat) || !Number.isFinite(state.candidate.lng)) { holder.innerHTML = '<p class="status error">该地点没有坐标，无法规划路线。请重新选择地图定位结果。</p>'; return; }
+  holder.innerHTML = `<section class="route-planner"><strong>选择乘客路线</strong><p>以你的当前位置为起点，规划驾车路线。当前位置不会同步给司机。</p><button class="secondary" id="plan-routes">使用当前位置规划路线</button><p id="route-status" class="status"></p><div id="route-list"></div></section>`;
+  holder.querySelector('#plan-routes').onclick = planRoutes;
+}
+
+function currentPosition() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) return reject(new Error('当前设备不支持定位，请使用手机浏览器或 App 打开。'));
+    navigator.geolocation.getCurrentPosition((position) => resolve({ lat: position.coords.latitude, lng: position.coords.longitude }), () => reject(new Error('未能获取当前位置。请允许定位权限后重试。')), { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 });
+  });
+}
+
+async function planRoutes() {
+  const status = document.querySelector('#route-status'), button = document.querySelector('#plan-routes'), list = document.querySelector('#route-list');
+  button.disabled = true; button.textContent = '正在获取位置…'; status.className = 'status'; status.textContent = '请允许定位权限，以便计算路线。'; list.innerHTML = '';
+  try {
+    const origin = await currentPosition();
+    button.textContent = '正在规划路线…';
+    const result = await request('/api/routes', { method: 'POST', body: JSON.stringify({ origin, destination: { lat: state.candidate.lat, lng: state.candidate.lng } }) });
+    if (!result.routes?.length) throw new Error('没有找到可选驾车路线。');
+    status.textContent = '请选择要同步给司机的路线。';
+    list.innerHTML = result.routes.map((route, index) => `<button class="route-option${index === 0 ? ' recommended' : ''}" data-route="${index}"><strong>${esc(route.label)}${index === 0 ? '<span>推荐</span>' : ''}</strong><small>${esc(route.distanceText)} · 预计 ${esc(route.durationText)}${route.tollsText ? ` · ${esc(route.tollsText)}` : ''}</small></button>`).join('');
+    list.querySelectorAll('[data-route]').forEach((item) => item.onclick = () => selectRoute(result.routes[Number(item.dataset.route)], item));
+  } catch (error) { status.className = 'status error'; status.textContent = error.message; button.disabled = false; button.textContent = '重新规划路线'; }
+}
+
+function selectRoute(route, item) {
+  document.querySelectorAll('.route-option').forEach((el) => el.classList.remove('selected'));
+  item.classList.add('selected'); state.route = route;
+  const send = document.querySelector('#send'); send.disabled = false; send.textContent = '发送目的地和路线给司机';
+  document.querySelector('#route-status').textContent = `已选择：${route.label}。`;
 }
 
 async function previewCandidate(candidate) {
@@ -171,7 +209,7 @@ function openMapLightbox(imageDataUrl, candidate) {
 
 async function searchAddress() {
   const address = document.querySelector('#address').value.trim(), status = document.querySelector('#search-status'), holder = document.querySelector('#candidates');
-  state.candidate = null; document.querySelector('#send').disabled = true; document.querySelector('#map-preview').innerHTML = '';
+  state.candidate = null; state.route = null; document.querySelector('#send').disabled = true; document.querySelector('#send').textContent = '选择路线后发送给司机'; document.querySelector('#map-preview').innerHTML = ''; document.querySelector('#route-options').innerHTML = '';
   if (address.length < 2) { status.className = 'status error'; status.textContent = '请填写目的地信息。'; return; }
   status.className = 'status'; status.textContent = '正在查找位置…'; holder.innerHTML = '';
   try {
@@ -179,7 +217,7 @@ async function searchAddress() {
     if (!result.candidates.length) {
       status.className = 'status error'; status.textContent = result.message || '没有找到位置。';
       holder.innerHTML = `<button class="candidate" id="send-text-only"><strong>仍发送这段目的地信息</strong><small>司机将在地图中搜索，准确性可能较低</small></button>`;
-      document.querySelector('#send-text-only').onclick = () => { selectCandidate({ name: address, address, city: '', district: '', lat: null, lng: null }, document.querySelector('#send-text-only')); document.querySelector('#send').textContent = '发送目的地信息给司机'; };
+      document.querySelector('#send-text-only').onclick = () => { selectCandidate({ name: address, address, city: '', district: '', lat: null, lng: null }, document.querySelector('#send-text-only')); };
       return;
     }
     status.textContent = '先查看地图，再确认正确的目的地。';
@@ -190,10 +228,10 @@ async function searchAddress() {
 }
 
 async function sendDestination() {
-  if (!state.candidate) return;
+  if (!state.candidate || !state.route) return;
   const button = document.querySelector('#send'); button.disabled = true; button.textContent = '正在发送…';
   try {
-    await request(`/api/boards/${state.boardId}/destination`, { method: 'POST', body: JSON.stringify({ destination: { ...state.candidate, note: document.querySelector('#note').value.trim() } }) });
+    await request(`/api/boards/${state.boardId}/destination`, { method: 'POST', body: JSON.stringify({ destination: { ...state.candidate, route: state.route, note: document.querySelector('#note').value.trim() } }) });
     app.innerHTML = `${brand()}<section class="card"><p class="eyebrow">已发送</p><h1>司机已收到目的地</h1><p class="lead">请让司机在手机上选择常用地图并点击导航。</p><div class="destination"><p class="address">${esc(state.candidate.name)}</p><p class="muted">${esc(state.candidate.address)}</p></div></section>`;
   } catch (error) { button.disabled = false; button.textContent = '确认位置后发送'; alert(error.message); }
 }

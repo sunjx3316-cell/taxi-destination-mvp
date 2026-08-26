@@ -13,15 +13,27 @@ const dbFor = () => cloudbase.init({ env: cloudbase.SYMBOL_DEFAULT_ENV }).rdb();
 function safeDestination(value) {
   if (!value || text(value.address).length < 3) throw new Error('请提供有效目的地。');
   const lat = Number(value.lat), lng = Number(value.lng);
-  return { name: text(value.name || value.address).slice(0, 120), address: text(value.address).slice(0, 240), city: text(value.city).slice(0, 80), district: text(value.district).slice(0, 80), lat: Number.isFinite(lat) ? lat : null, lng: Number.isFinite(lng) ? lng : null, note: text(value.note).slice(0, 120), receivedAt: Date.now() };
+  const route = value.route && typeof value.route === 'object' ? {
+    label: text(value.route.label).slice(0, 40),
+    distanceText: text(value.route.distanceText).slice(0, 40),
+    durationText: text(value.route.durationText).slice(0, 40),
+    tollsText: text(value.route.tollsText).slice(0, 40),
+    strategy: Number.isSafeInteger(Number(value.route.strategy)) ? Number(value.route.strategy) : null
+  } : null;
+  if (!route?.label || !route.distanceText || !route.durationText) throw new Error('请先规划并选择一条路线。');
+  return { name: text(value.name || value.address).slice(0, 120), address: text(value.address).slice(0, 240), city: text(value.city).slice(0, 80), district: text(value.district).slice(0, 80), lat: Number.isFinite(lat) ? lat : null, lng: Number.isFinite(lng) ? lng : null, route, note: text(value.note).slice(0, 120), receivedAt: Date.now() };
 }
 
 function point(value) { const [lng, lat] = String(value || '').split(',').map(Number); return Number.isFinite(lng) && Number.isFinite(lat) ? { lng, lat } : null; }
 
 async function amapRequest(endpoint, params) {
+  return amapRequestAt(`v3/${endpoint}`, params);
+}
+
+async function amapRequestAt(path, params) {
   const key = process.env.AMAP_WEB_KEY;
   if (!key) throw new Error('高德地图服务尚未配置。');
-  const url = new URL(`https://restapi.amap.com/v3/${endpoint}`);
+  const url = new URL(`https://restapi.amap.com/${path}`);
   url.searchParams.set('key', key);
   Object.entries(params).forEach(([name, value]) => { if (value) url.searchParams.set(name, value); });
   const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
@@ -29,6 +41,45 @@ async function amapRequest(endpoint, params) {
   const body = await response.json();
   if (body.status !== '1') throw new Error(body.info || '目的地解析失败。');
   return body;
+}
+
+const distanceText = (meters) => Number(meters) >= 1000 ? `${(Number(meters) / 1000).toFixed(1)} 公里` : `${Math.max(1, Math.round(Number(meters) || 0))} 米`;
+const durationText = (seconds) => {
+  const minutes = Math.max(1, Math.round(Number(seconds) / 60 || 0));
+  return minutes >= 60 ? `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分` : `${minutes} 分钟`;
+};
+
+async function routeOptions(origin, destination) {
+  const from = { lng: Number(origin?.lng), lat: Number(origin?.lat) };
+  const to = { lng: Number(destination?.lng), lat: Number(destination?.lat) };
+  if (![from.lng, from.lat, to.lng, to.lat].every(Number.isFinite)) throw new Error('路线规划需要有效的当前位置和目的地坐标。');
+  const strategies = [
+    { value: 32, label: '高德推荐' },
+    { value: 33, label: '躲避拥堵' },
+    { value: 36, label: '少收费' }
+  ];
+  const originText = `${from.lng.toFixed(6)},${from.lat.toFixed(6)}`;
+  const destinationText = `${to.lng.toFixed(6)},${to.lat.toFixed(6)}`;
+  const results = await Promise.allSettled(strategies.map(async (strategy) => {
+    const body = await amapRequestAt('v5/direction/driving', { origin: originText, destination: destinationText, strategy: strategy.value, show_fields: 'cost,navi' });
+    const path = body.route?.paths?.[0];
+    if (!path) throw new Error('路线服务未返回可用方案。');
+    const tolls = Number(path.tolls || 0);
+    return {
+      label: strategy.label,
+      strategy: strategy.value,
+      distanceText: distanceText(path.distance),
+      durationText: durationText(path.duration),
+      tollsText: tolls > 0 ? `过路费约 ${tolls.toFixed(0)} 元` : ''
+    };
+  }));
+  const seen = new Set();
+  const routes = results.filter((result) => result.status === 'fulfilled').map((result) => result.value).filter((route) => {
+    const key = `${route.distanceText}|${route.durationText}`;
+    if (seen.has(key)) return false; seen.add(key); return true;
+  });
+  if (!routes.length) throw new Error('暂时无法规划路线，请稍后重试。');
+  return { routes };
 }
 
 async function geocode(query) {
@@ -97,6 +148,7 @@ exports.main = async (event = {}) => {
       return { ok: true, ...(await geocode(address)) };
     }
     if (event.action === 'mapPreview') return { ok: true, ...(await mapPreview(event.lng, event.lat, event.name)) };
+    if (event.action === 'routeOptions') return { ok: true, ...(await routeOptions(event.origin, event.destination)) };
 
     const id = text(event.boardId).toUpperCase();
     const board = await getBoard(db, id);

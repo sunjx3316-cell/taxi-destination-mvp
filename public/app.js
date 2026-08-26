@@ -177,7 +177,7 @@ async function planRoutes() {
     if (!result.routes?.length) throw new Error('没有找到可选驾车路线。');
     status.textContent = '请选择要同步给司机的路线。';
     list.innerHTML = result.routes.map((route, index) => `<article class="route-option${index === 0 ? ' recommended' : ''}"><strong>${esc(route.label)}${index === 0 ? '<span>推荐</span>' : ''}</strong><small>${esc(route.distanceText)} · 预计 ${esc(route.durationText)}${route.tollsText ? ` · ${esc(route.tollsText)}` : ''}</small><div class="candidate-actions"><button class="ghost" data-route-preview="${index}">查看线路地图</button><button class="candidate-confirm" data-route-select="${index}">选择这条路线</button></div></article>`).join('');
-    list.querySelectorAll('[data-route-preview]').forEach((item) => item.onclick = () => previewRoute(result.routes[Number(item.dataset.route)]));
+    list.querySelectorAll('[data-route-preview]').forEach((item) => item.onclick = () => previewRoute(result.routes[Number(item.dataset.routePreview)]));
     list.querySelectorAll('[data-route-select]').forEach((item) => item.onclick = () => selectRoute(result.routes[Number(item.dataset.route)], item.closest('.route-option')));
   } catch (error) { status.className = 'status error'; status.textContent = error.message; button.disabled = false; button.textContent = '重新规划路线'; }
 }

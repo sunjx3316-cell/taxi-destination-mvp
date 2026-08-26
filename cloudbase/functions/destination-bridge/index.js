@@ -60,10 +60,10 @@ function compactPolyline(value) {
 }
 
 function routePolyline(path) {
-  const wholePath = compactPolyline(path.polyline);
-  if (wholePath) return wholePath;
   const steps = path.steps || path.navi?.steps || [];
-  return compactPolyline(steps.map((step) => text(step.polyline || step.tmc_polyline)).filter(Boolean).join(';'));
+  const detailedPath = compactPolyline(steps.map((step) => text(step.polyline || step.tmc_polyline)).filter(Boolean).join(';'));
+  if (detailedPath) return detailedPath;
+  return compactPolyline(path.polyline);
 }
 
 async function staticMapImage(params) {

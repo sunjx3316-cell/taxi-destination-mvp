@@ -100,6 +100,8 @@ textarea { min-height:112px; resize:vertical; }
 .badge { display:inline-block; margin-left:6px; padding:3px 7px; color:#067347; background:#def7ec; border-radius:999px; font-size:.72rem; font-weight:750; }
 .inbox-heading { display:flex; justify-content:space-between; align-items:center; margin:22px 2px 8px; }
 .inbox-heading span { color:var(--muted); font-size:.84rem; }
+.arrival-notice { margin:16px 0 -8px; padding:12px 14px; color:#075c40; border:1px solid #8de1bb; border-radius:13px; background:#e9fff1; font-weight:800; animation:arrival-pulse 1.2s ease-in-out 2; }
+@keyframes arrival-pulse { 50% { transform:scale(1.015); box-shadow:0 0 0 6px rgba(20,150,93,.12); } }
 .empty { padding:26px 18px; text-align:center; color:var(--muted); border:1px dashed var(--line); border-radius:17px; }
 .footer-note { margin:24px 4px; color:var(--muted); font-size:.8rem; line-height:1.55; }
 @media (max-width:380px) { .role-grid,.map-grid { grid-template-columns:1fr; } .app-shell { padding-left:14px; padding-right:14px; } }

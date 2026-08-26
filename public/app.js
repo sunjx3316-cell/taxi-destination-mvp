@@ -9,6 +9,7 @@ const AMAP_JS_SECURITY_CODE = String(window.DESTINATION_AMAP_JS_SECURITY_CODE ||
 const DRIVER_BOARD_STORAGE = 'daonaer-driver-board-v1';
 let bridgePromise = null;
 let amapJsPromise = null;
+let arrivalAudio = null;
 
 const esc = (value = '') => String(value).replace(/[&<>'"]/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#039;', '"':'&quot;' }[c]));
 const brand = () => '<div class="brand"><span class="brand-mark">⌁</span><span>到哪儿</span></div>';
@@ -66,6 +67,7 @@ function renderHome() {
 }
 
 async function openDriverBoard() {
+  enableDriverAlerts();
   const existing = savedBoard();
   if (existing?.boardId && existing?.driverToken) {
     state.driver = existing; state.boardId = existing.boardId; renderDriver(); return pollDriver();
@@ -82,7 +84,7 @@ async function openDriverBoard() {
 
 function renderDriver() {
   const board = state.driver;
-  app.innerHTML = `${brand()}<p class="eyebrow">司机端 · 长期车载二维码</p><h1>请让乘客扫码</h1><p class="lead">把这个二维码贴在后座即可。它不会自动刷新或失效，乘客发来的目的地会显示在下方。</p><section class="card"><div id="qrcode" class="qr-wrap"></div><p class="session-code">${esc(board.boardId)}</p><p class="countdown">长期有效 · 保留此页面即可接收</p><button class="secondary" id="copy-link">复制乘客链接</button></section><section id="destination-area">${messagesMarkup(state.messages)}</section><p class="footer-note">每次提交都会保留在接收列表中。司机需要手动点击地图按钮。</p>`;
+  app.innerHTML = `${brand()}<p class="eyebrow">司机端 · 长期车载二维码</p><h1>请让乘客扫码</h1><p class="lead">把这个二维码贴在后座即可。它不会自动刷新或失效，乘客发来的目的地会显示在下方。</p><section class="card"><div id="qrcode" class="qr-wrap"></div><p class="session-code">${esc(board.boardId)}</p><p class="countdown">长期有效 · 保留此页面即可接收</p><button class="secondary" id="copy-link">复制乘客链接</button></section><section id="destination-area">${messagesMarkup(state.messages)}</section><p class="footer-note">接收页保持打开时，会在收到新目的地后震动、提示音和高亮提醒；后台或关闭 App 后仍需原生推送服务。</p>`;
   const qr = document.querySelector('#qrcode');
   if (window.QRCode) new QRCode(qr, { text: board.passengerUrl, width: 190, height: 190, correctLevel: QRCode.CorrectLevel.M }); else qr.textContent = board.passengerUrl;
   document.querySelector('#copy-link').onclick = async () => { await navigator.clipboard.writeText(board.passengerUrl); document.querySelector('#copy-link').textContent = '已复制'; };
@@ -91,7 +93,27 @@ function renderDriver() {
 
 function messagesMarkup(messages) {
   if (!messages?.length) return '<div class="empty">还没有目的地<br><small>等待乘客扫码并发送地址</small></div>';
-  return `<div class="inbox-heading"><h2>最近收到的目的地</h2><span>${messages.length} 条</span></div>${messages.map(({ id, destination }) => destinationMarkup(destination, id)).join('')}`;
+  const notice = state.arrivalNotice ? `<div class="arrival-notice" role="status">${esc(state.arrivalNotice)}</div>` : '';
+  return `${notice}<div class="inbox-heading"><h2>最近收到的目的地</h2><span>${messages.length} 条</span></div>${messages.map(({ id, destination }) => destinationMarkup(destination, id)).join('')}`;
+}
+
+function enableDriverAlerts() {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    arrivalAudio = arrivalAudio || new AudioContext();
+    arrivalAudio.resume?.();
+  } catch { arrivalAudio = null; }
+}
+
+function playArrivalTone() {
+  try {
+    if (!arrivalAudio || arrivalAudio.state !== 'running') return;
+    const now = arrivalAudio.currentTime, oscillator = arrivalAudio.createOscillator(), gain = arrivalAudio.createGain();
+    oscillator.frequency.setValueAtTime(880, now); oscillator.frequency.setValueAtTime(1047, now + .18);
+    gain.gain.setValueAtTime(.0001, now); gain.gain.exponentialRampToValueAtTime(.12, now + .02); gain.gain.exponentialRampToValueAtTime(.0001, now + .42);
+    oscillator.connect(gain).connect(arrivalAudio.destination); oscillator.start(now); oscillator.stop(now + .45);
+  } catch { /* Optional alert. */ }
 }
 
 function destinationMarkup(d, id) {
@@ -125,9 +147,13 @@ async function pollDriver() {
       const result = await request(`/api/boards/${state.driver.boardId}`, { headers: { 'x-driver-token': state.driver.driverToken } });
       const next = result.messages || [], fingerprint = JSON.stringify(next);
       if (fingerprint !== state.messagesFingerprint) {
-        const had = state.messages.length; state.messages = next; state.messagesFingerprint = fingerprint;
+        const previousIds = new Set(state.messages.map((message) => String(message.id)));
+        const incoming = next.filter((message) => !previousIds.has(String(message.id)));
+        const shouldAlert = state.driverLoaded && incoming.length > 0;
+        state.messages = next; state.messagesFingerprint = fingerprint; state.driverLoaded = true;
+        state.arrivalNotice = shouldAlert ? `收到 ${incoming.length} 条新目的地，请查看列表。` : '';
         const area = document.querySelector('#destination-area'); if (area) { area.innerHTML = messagesMarkup(next); bindMaps(); }
-        if (had && navigator.vibrate) navigator.vibrate([100, 70, 100]);
+        if (shouldAlert) { if (navigator.vibrate) navigator.vibrate([130, 70, 130]); playArrivalTone(); }
       }
     } catch (error) { console.info('Destination polling retrying…', error.message); }
   };

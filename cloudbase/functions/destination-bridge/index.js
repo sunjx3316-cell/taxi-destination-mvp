@@ -127,9 +127,9 @@ async function routeOptions(origin, destination) {
   const to = { lng: Number(destination?.lng), lat: Number(destination?.lat) };
   if (![from.lng, from.lat, to.lng, to.lat].every(Number.isFinite)) throw new Error('路线规划需要有效的当前位置和目的地坐标。');
   const strategies = [
-    { value: 32, label: '高德推荐' },
-    { value: 33, label: '躲避拥堵' },
-    { value: 36, label: '少收费' }
+    { value: 44, label: '大路优先 · 躲拥堵' },
+    { value: 39, label: '高速优先 · 躲拥堵' },
+    { value: 32, label: '高德推荐' }
   ];
   const originText = `${from.lng.toFixed(6)},${from.lat.toFixed(6)}`;
   const destinationText = `${to.lng.toFixed(6)},${to.lat.toFixed(6)}`;

@@ -1,0 +1,25 @@
+{
+  "name": "taxi-destination-mvp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Passenger-to-driver destination handoff MVP",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "android:add": "cap add android",
+    "android:sync": "cap sync android",
+    "android:open": "cap open android"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.6.8",
+    "@capacitor/cli": "^7.6.8",
+    "@capacitor/core": "^7.6.8",
+    "@cloudbase/js-sdk": "^3.8.2"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}

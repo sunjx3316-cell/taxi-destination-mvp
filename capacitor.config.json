@@ -1,0 +1,8 @@
+{
+  "appId": "com.daonaer.destination",
+  "appName": "到哪儿",
+  "webDir": "public",
+  "server": {
+    "androidScheme": "https"
+  }
+}

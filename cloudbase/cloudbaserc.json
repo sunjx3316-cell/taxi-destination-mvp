@@ -1,0 +1,13 @@
+{
+  "envId": "sunner-wang-d8ght8niaaaea70b7",
+  "functionRoot": "functions",
+  "functions": [
+    {
+      "name": "destination-bridge",
+      "timeout": 20,
+      "envVariables": {
+        "AMAP_WEB_KEY": ""
+      }
+    }
+  ]
+}

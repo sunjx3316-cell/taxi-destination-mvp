@@ -1,0 +1,26 @@
+# Secrets and local configuration
+.env
+.env.example
+
+# JavaScript dependencies
+node_modules/
+
+# Android / Capacitor build output and local backups
+android/.gradle/
+android/build/
+android/app/build/
+android/capacitor-cordova-android-plugins/build/
+android-cap8-backup/
+
+# Local tooling and generated release archives
+tools/
+cloudbase/release/
+*.apk
+*.aab
+
+# Editor / operating-system files
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db

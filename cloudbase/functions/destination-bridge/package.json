@@ -1,0 +1,9 @@
+{
+  "name": "destination-bridge",
+  "private": true,
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/js-sdk": "^3.8.2"
+  }
+}

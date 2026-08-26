@@ -1,0 +1,11 @@
+{
+  "name": "到哪儿 · 司机导航助手",
+  "short_name": "到哪儿",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f8fb",
+  "theme_color": "#102a43",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

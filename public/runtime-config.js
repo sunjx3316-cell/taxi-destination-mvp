@@ -10,3 +10,8 @@ window.DESTINATION_CLOUDBASE_ENV = 'sunner-wang-d8ght8niaaaea70b7';
 // then run `npm run android:sync` and rebuild the APK. It is the URL encoded
 // in the driver's QR code, so passengers can open it on their own phones.
 window.DESTINATION_PUBLIC_WEB_URL = 'https://daonaer-sunner-wang-d8ght8niaaaea70b7.webapps.tcloudbase.com';
+
+// AMap JavaScript API credentials. Keep these blank in Git. They are injected
+// only into the deployed web configuration after the app code is released.
+window.DESTINATION_AMAP_JS_KEY = '';
+window.DESTINATION_AMAP_JS_SECURITY_CODE = '';

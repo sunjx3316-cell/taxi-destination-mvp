@@ -8,6 +8,7 @@ const fail = (message) => ({ ok: false, message });
 const boardId = () => crypto.randomBytes(6).toString('hex').toUpperCase();
 const token = () => crypto.randomBytes(24).toString('base64url');
 const hash = (value) => crypto.createHash('sha256').update(String(value)).digest('hex');
+const TRAFFIC_STATUSES = new Set(['畅通', '缓行', '拥堵', '严重拥堵', '未知']);
 const dbFor = () => cloudbase.init({ env: cloudbase.SYMBOL_DEFAULT_ENV }).rdb();
 
 function safeDestination(value) {
@@ -18,8 +19,14 @@ function safeDestination(value) {
     distanceText: text(value.route.distanceText).slice(0, 40),
     durationText: text(value.route.durationText).slice(0, 40),
     tollsText: text(value.route.tollsText).slice(0, 40),
+    highwayText: text(value.route.highwayText).slice(0, 120),
+    trafficText: text(value.route.trafficText).slice(0, 120),
     strategy: Number.isSafeInteger(Number(value.route.strategy)) ? Number(value.route.strategy) : null,
-    polyline: text(value.route.polyline).slice(0, 6000)
+    polyline: text(value.route.polyline).slice(0, 6000),
+    trafficSegments: Array.isArray(value.route.trafficSegments) ? value.route.trafficSegments.slice(0, 160).map((segment) => ({
+      status: TRAFFIC_STATUSES.has(text(segment?.status)) ? text(segment.status) : '未知',
+      polyline: text(segment?.polyline).slice(0, 1000)
+    })).filter((segment) => segment.polyline) : []
   } : null;
   if (!route?.label || !route.distanceText || !route.durationText || !route.polyline) throw new Error('请先规划并选择一条路线。');
   return { name: text(value.name || value.address).slice(0, 120), address: text(value.address).slice(0, 240), city: text(value.city).slice(0, 80), district: text(value.district).slice(0, 80), lat: Number.isFinite(lat) ? lat : null, lng: Number.isFinite(lng) ? lng : null, route, note: text(value.note).slice(0, 120), receivedAt: Date.now() };
@@ -50,13 +57,34 @@ const durationText = (seconds) => {
   return minutes >= 60 ? `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分` : `${minutes} 分钟`;
 };
 
-function compactPolyline(value) {
+function compactPolyline(value, maxPoints = 180) {
   const points = text(value).split(';').map((item) => item.trim()).filter((item) => /^-?\d{1,3}(?:\.\d+)?,-?\d{1,2}(?:\.\d+)?$/.test(item));
   if (points.length < 2) return '';
-  const maxPoints = 180;
   const stride = Math.max(1, Math.ceil(points.length / maxPoints));
   const compacted = points.filter((_, index) => index % stride === 0 || index === points.length - 1);
   return compacted.join(';').slice(0, 6000);
+}
+
+function trafficSegments(path) {
+  const steps = path.steps || path.navi?.steps || [];
+  return steps.flatMap((step) => Array.isArray(step.tmcs) ? step.tmcs : []).map((tmc) => ({
+    status: TRAFFIC_STATUSES.has(text(tmc.tmc_status)) ? text(tmc.tmc_status) : '未知',
+    polyline: compactPolyline(tmc.tmc_polyline, 36)
+  })).filter((segment) => segment.polyline).slice(0, 160);
+}
+
+function trafficText(segments) {
+  const counts = segments.reduce((all, item) => { all[item.status] = (all[item.status] || 0) + 1; return all; }, {});
+  if (counts['严重拥堵']) return `严重拥堵 ${counts['严重拥堵']} 段`;
+  if (counts['拥堵']) return `拥堵 ${counts['拥堵']} 段`;
+  if (counts['缓行']) return `缓行 ${counts['缓行']} 段`;
+  return segments.length ? '全程较畅通' : '暂未返回实时路况';
+}
+
+function highwayText(path) {
+  const roads = [...new Set((path.steps || []).map((step) => text(step.road_name)).filter((road) => /高速|(^|\s)[GS]\d+/i.test(road)))].slice(0, 3);
+  if (roads.length) return `途经高速：${roads.join('、')}${roads.length === 3 ? '等' : ''}`;
+  return '';
 }
 
 function routePolyline(path) {
@@ -106,13 +134,14 @@ async function routeOptions(origin, destination) {
   const originText = `${from.lng.toFixed(6)},${from.lat.toFixed(6)}`;
   const destinationText = `${to.lng.toFixed(6)},${to.lat.toFixed(6)}`;
   const results = await Promise.allSettled(strategies.map(async (strategy) => {
-    const body = await amapRequestAt('v5/direction/driving', { origin: originText, destination: destinationText, strategy: strategy.value, show_fields: 'cost,polyline' });
+    const body = await amapRequestAt('v5/direction/driving', { origin: originText, destination: destinationText, strategy: strategy.value, show_fields: 'cost,polyline,tmcs' });
     const path = body.route?.paths?.[0];
     if (!path) throw new Error('路线服务未返回可用方案。');
     const duration = Number(path.cost?.duration ?? path.duration ?? path.cost?.time ?? path.time);
     if (!Number.isFinite(duration) || duration <= 0) throw new Error('路线服务未返回准确的预计时长。');
     const tolls = Number(path.cost?.tolls ?? path.tolls ?? 0);
     const polyline = routePolyline(path);
+    const traffic = trafficSegments(path);
     if (!polyline) throw new Error('路线服务未返回可绘制的线路。');
     return {
       label: strategy.label,
@@ -120,6 +149,9 @@ async function routeOptions(origin, destination) {
       distanceText: distanceText(path.distance),
       durationText: durationText(duration),
       tollsText: tolls > 0 ? `过路费约 ${tolls.toFixed(0)} 元` : '',
+      highwayText: highwayText(path),
+      trafficText: trafficText(traffic),
+      trafficSegments: traffic,
       polyline
     };
   }));

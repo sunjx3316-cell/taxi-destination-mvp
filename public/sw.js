@@ -1,4 +1,4 @@
-const CACHE = 'destination-bridge-v15';
+const CACHE = 'destination-bridge-v16';
 const ASSETS = ['/', '/index.html', '/styles.css', '/runtime-config.js', '/app.js', '/manifest.webmanifest', '/icon.svg'];
 self.addEventListener('install', (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS))));
 self.addEventListener('activate', (event) => event.waitUntil(

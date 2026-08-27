@@ -137,32 +137,33 @@ async function routeOptions(origin, destination) {
   const originText = `${from.lng.toFixed(6)},${from.lat.toFixed(6)}`;
   const destinationText = `${to.lng.toFixed(6)},${to.lat.toFixed(6)}`;
   const results = await Promise.allSettled(strategies.map(async (strategy) => {
-    const body = await amapRequestAt('v5/direction/driving', { origin: originText, destination: destinationText, strategy: strategy.value, show_fields: 'cost,polyline,tmcs' });
-    const path = body.route?.paths?.[0];
-    if (!path) throw new Error('路线服务未返回可用方案。');
-    const duration = Number(path.cost?.duration ?? path.duration ?? path.cost?.time ?? path.time);
-    if (!Number.isFinite(duration) || duration <= 0) throw new Error('路线服务未返回准确的预计时长。');
-    const tolls = Number(path.cost?.tolls ?? path.tolls ?? 0);
-    const polyline = routePolyline(path);
-    const traffic = trafficSegments(path);
-    if (!polyline) throw new Error('路线服务未返回可绘制的线路。');
-    return {
-      label: strategy.label,
-      strategy: strategy.value,
-      distanceText: distanceText(path.distance),
-      durationText: durationText(duration),
-      tollsText: tolls > 0 ? `过路费约 ${tolls.toFixed(0)} 元` : '',
-      highwayText: highwayText(path),
-      trafficText: trafficText(traffic),
-      trafficSegments: traffic,
-      polyline
-    };
+    const body = await amapRequestAt('v5/direction/driving', { origin: originText, destination: destinationText, strategy: strategy.value, alternative_route: 3, show_fields: 'cost,polyline,tmcs' });
+    const paths = (body.route?.paths || []).slice(0, 3);
+    if (!paths.length) throw new Error('路线服务未返回可用方案。');
+    return paths.map((path, index) => {
+      const duration = Number(path.cost?.duration ?? path.duration ?? path.cost?.time ?? path.time);
+      if (!Number.isFinite(duration) || duration <= 0) throw new Error('路线服务未返回准确的预计时长。');
+      const tolls = Number(path.cost?.tolls ?? path.tolls ?? 0);
+      const polyline = routePolyline(path);
+      const traffic = trafficSegments(path);
+      if (!polyline) throw new Error('路线服务未返回可绘制的线路。');
+      return {
+        label: index ? `${strategy.label} · 备选 ${index + 1}` : strategy.label,
+        strategy: strategy.value,
+        distanceText: distanceText(path.distance),
+        durationText: durationText(duration),
+        tollsText: tolls > 0 ? `过路费约 ${tolls.toFixed(0)} 元` : '',
+        highwayText: highwayText(path),
+        trafficText: trafficText(traffic),
+        trafficSegments: traffic,
+        polyline
+      };
+    });
   }));
+  const strategyRoutes = results.filter((result) => result.status === 'fulfilled').map((result) => result.value);
+  const candidates = [...strategyRoutes.map((items) => items[0]), ...strategyRoutes.flatMap((items) => items.slice(1))].filter(Boolean);
   const seen = new Set();
-  const routes = results.filter((result) => result.status === 'fulfilled').map((result) => result.value).filter((route) => {
-    const key = `${route.distanceText}|${route.durationText}`;
-    if (seen.has(key)) return false; seen.add(key); return true;
-  });
+  const routes = candidates.filter((route) => { if (seen.has(route.polyline)) return false; seen.add(route.polyline); return true; }).slice(0, 4);
   if (!routes.length) throw new Error('暂时无法规划路线，请稍后重试。');
   return { routes };
 }

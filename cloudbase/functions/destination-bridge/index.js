@@ -28,7 +28,9 @@ function safeDestination(value) {
       polyline: text(segment?.polyline).slice(0, 1000)
     })).filter((segment) => segment.polyline) : []
   } : null;
-  if (!route?.label || !route.distanceText || !route.durationText || !route.polyline) throw new Error('请先规划并选择一条路线。');
+  // 路线是兼容旧消息的可选附加信息。现在乘客只需确认目的地，
+  // 由司机在自己的导航软件里选择实时路线。
+  if (route && (!route.label || !route.distanceText || !route.durationText || !route.polyline)) throw new Error('路线信息不完整。');
   return { name: text(value.name || value.address).slice(0, 120), address: text(value.address).slice(0, 240), city: text(value.city).slice(0, 80), district: text(value.district).slice(0, 80), lat: Number.isFinite(lat) ? lat : null, lng: Number.isFinite(lng) ? lng : null, route, note: text(value.note).slice(0, 120), receivedAt: Date.now() };
 }
 

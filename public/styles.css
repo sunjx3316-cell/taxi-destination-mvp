@@ -81,6 +81,10 @@ textarea { min-height:112px; resize:vertical; }
 .traffic-green { background:#16a34a; }.traffic-yellow { background:#f59e0b; }.traffic-orange { background:#f97316; }.traffic-red { background:#dc2626; }
 .interactive-route-map { width:100%; height:min(68vh,620px); min-height:340px; background:#eef4f8; }
 .interactive-route-map > p,.interactive-route-map .route-map-error { padding:28px 16px; }
+.candidate-map-actions { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:12px 16px 16px; }
+.candidate-map-actions p { padding:0; font-size:.82rem; }
+.candidate-map-actions .primary { flex:0 0 auto; }
+@media (max-width:560px) { .candidate-map-actions { display:block; } .candidate-map-actions .primary { width:100%; margin-top:10px; } }
 .route-map-error { color:var(--danger) !important; }
 .divider { height:1px; margin:20px 0; background:var(--line); }
 .qr-wrap { width:214px; height:214px; padding:12px; display:grid; place-items:center; margin:22px auto 12px; border-radius:20px; background:#fff; border:1px solid var(--line); }

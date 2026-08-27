@@ -57,12 +57,15 @@ const durationText = (seconds) => {
   return minutes >= 60 ? `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分` : `${minutes} 分钟`;
 };
 
-function compactPolyline(value, maxPoints = 180) {
+function compactPolyline(value, maxPoints = 320) {
   const points = text(value).split(';').map((item) => item.trim()).filter((item) => /^-?\d{1,3}(?:\.\d+)?,-?\d{1,2}(?:\.\d+)?$/.test(item));
   if (points.length < 2) return '';
   const stride = Math.max(1, Math.ceil(points.length / maxPoints));
-  const compacted = points.filter((_, index) => index % stride === 0 || index === points.length - 1);
-  return compacted.join(';').slice(0, 6000);
+  const compacted = points.filter((_, index) => index % stride === 0 || index === points.length - 1).map((item) => {
+    const [lng, lat] = item.split(',').map(Number);
+    return `${lng.toFixed(5)},${lat.toFixed(5)}`;
+  });
+  return compacted.join(';').slice(0, 5800);
 }
 
 function trafficSegments(path) {

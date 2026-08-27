@@ -78,7 +78,7 @@ textarea { min-height:112px; resize:vertical; }
 .route-map-meta b { color:#38536b; font-weight:700; }
 .traffic-legend { display:inline-flex; align-items:center; gap:5px; }
 .traffic-legend i { width:9px; height:9px; border-radius:999px; }
-.traffic-green { background:#16a34a; }.traffic-yellow { background:#f59e0b; }.traffic-red { background:#dc2626; }
+.traffic-green { background:#16a34a; }.traffic-yellow { background:#f59e0b; }.traffic-orange { background:#f97316; }.traffic-red { background:#dc2626; }
 .interactive-route-map { width:100%; height:min(68vh,620px); min-height:340px; background:#eef4f8; }
 .interactive-route-map > p,.interactive-route-map .route-map-error { padding:28px 16px; }
 .route-map-error { color:var(--danger) !important; }

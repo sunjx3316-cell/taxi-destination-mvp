@@ -207,7 +207,7 @@ async function planRoutes() {
     status.textContent = '请选择要同步给司机的路线。';
     list.innerHTML = result.routes.map((route, index) => `<article class="route-option${index === 0 ? ' recommended' : ''}"><strong>${esc(route.label)}${index === 0 ? '<span>推荐</span>' : ''}</strong><small>${esc(route.distanceText)} · 预计 ${esc(route.durationText)}${route.tollsText ? ` · ${esc(route.tollsText)}` : ''}</small>${route.trafficText ? `<small class="route-live">路况：${esc(route.trafficText)}</small>` : ''}${route.highwayText ? `<small class="route-live">${esc(route.highwayText)}</small>` : ''}<div class="candidate-actions"><button class="ghost" data-route-preview="${index}">查看线路地图</button><button class="candidate-confirm" data-route-select="${index}">选择这条路线</button></div></article>`).join('');
     list.querySelectorAll('[data-route-preview]').forEach((item) => item.onclick = () => previewRoute(result.routes[Number(item.dataset.routePreview)]));
-    list.querySelectorAll('[data-route-select]').forEach((item) => item.onclick = () => selectRoute(result.routes[Number(item.dataset.route)], item.closest('.route-option')));
+    list.querySelectorAll('[data-route-select]').forEach((item) => item.onclick = () => selectRoute(result.routes[Number(item.dataset.routeSelect)], item.closest('.route-option')));
   } catch (error) { status.className = 'status error'; status.textContent = error.message; button.disabled = false; button.textContent = '重新规划路线'; }
 }
 
@@ -238,6 +238,11 @@ function trafficColor(status) {
   return ({ '畅通':'#16a34a', '缓行':'#f59e0b', '拥堵':'#f97316', '严重拥堵':'#dc2626', '未知':'#64748b' })[status] || '#64748b';
 }
 
+function trafficStats(segments) {
+  const counts = (segments || []).reduce((all, segment) => { all[segment.status] = (all[segment.status] || 0) + 1; return all; }, {});
+  return [['畅通', 'traffic-green'], ['缓行', 'traffic-yellow'], ['拥堵', 'traffic-orange'], ['严重拥堵', 'traffic-red']].filter(([status]) => counts[status]).map(([status, className]) => `<span class="traffic-legend"><i class="${className}"></i>${status} ${counts[status]} 段</span>`).join('');
+}
+
 function loadAmapJs() {
   if (window.AMap) return Promise.resolve(window.AMap);
   if (!AMAP_JS_KEY || !AMAP_JS_SECURITY_CODE) return Promise.reject(new Error('交互地图尚未配置。'));
@@ -257,7 +262,7 @@ async function openInteractiveRouteMap(route) {
   const title = `${route.label}路线图`, detail = `${route.distanceText} · 预计 ${route.durationText}`;
   const lightbox = document.createElement('div');
   lightbox.id = 'map-lightbox'; lightbox.className = 'map-lightbox';
-  lightbox.innerHTML = `<div class="map-lightbox-panel route-map-panel" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="map-lightbox-title"><div><strong>${esc(title)}</strong><span>${esc(detail)}</span></div><button type="button" class="map-lightbox-close" aria-label="关闭路线地图">关闭</button></div><div class="route-map-meta"><span class="traffic-legend"><i class="traffic-green"></i>畅通</span><span class="traffic-legend"><i class="traffic-yellow"></i>缓行</span><span class="traffic-legend"><i class="traffic-red"></i>拥堵</span>${route.trafficText ? `<b>${esc(route.trafficText)}</b>` : ''}${route.highwayText ? `<b>${esc(route.highwayText)}</b>` : ''}</div><div class="interactive-route-map" id="interactive-route-map"><p>正在加载交互路线地图…</p></div></div>`;
+  lightbox.innerHTML = `<div class="map-lightbox-panel route-map-panel" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="map-lightbox-title"><div><strong>${esc(title)}</strong><span>${esc(detail)}</span></div><button type="button" class="map-lightbox-close" aria-label="关闭路线地图">关闭</button></div><div class="route-map-meta">${trafficStats(route.trafficSegments)}${route.trafficText ? `<b>${esc(route.trafficText)}</b>` : ''}${route.highwayText ? `<b>${esc(route.highwayText)}</b>` : ''}</div><div class="interactive-route-map" id="interactive-route-map"><p>正在加载交互路线地图…</p></div></div>`;
   const close = () => lightbox.remove();
   lightbox.addEventListener('click', (event) => { if (event.target === lightbox) close(); });
   lightbox.querySelector('.map-lightbox-close').onclick = close;
@@ -268,10 +273,11 @@ async function openInteractiveRouteMap(route) {
     if (points.length < 2) throw new Error('该路线缺少可绘制坐标。');
     container.innerHTML = '';
     const map = new AMap.Map(container, { viewMode: '2D', zoom: 11, resizeEnable: true, mapStyle: 'amap://styles/normal' });
-    const overlays = [new AMap.Polyline({ path: points, strokeColor: '#0b6e4f', strokeWeight: 7, strokeOpacity: .82, lineJoin: 'round', lineCap: 'round' })];
+    if (AMap.TileLayer?.Traffic) new AMap.TileLayer.Traffic({ autoRefresh: true, interval: 180 }).setMap(map);
+    const overlays = [new AMap.Polyline({ path: points, strokeColor: '#d9e3eb', strokeWeight: 15, strokeOpacity: .95, lineJoin: 'round', lineCap: 'round' }), new AMap.Polyline({ path: points, strokeColor: '#16a34a', strokeWeight: 8, strokeOpacity: .7, lineJoin: 'round', lineCap: 'round' })];
     (route.trafficSegments || []).forEach((segment) => {
       const segmentPoints = parsePolyline(segment.polyline);
-      if (segmentPoints.length > 1) overlays.push(new AMap.Polyline({ path: segmentPoints, strokeColor: trafficColor(segment.status), strokeWeight: 8, strokeOpacity: .96, lineJoin: 'round', lineCap: 'round' }));
+      if (segmentPoints.length > 1) overlays.push(new AMap.Polyline({ path: segmentPoints, strokeColor: trafficColor(segment.status), strokeWeight: 10, strokeOpacity: 1, lineJoin: 'round', lineCap: 'round' }));
     });
     overlays.push(new AMap.Marker({ position: points[0], title: '起点' }), new AMap.Marker({ position: points[points.length - 1], title: '目的地' }));
     map.add(overlays); map.setFitView(overlays, false, [34, 34, 34, 34]);

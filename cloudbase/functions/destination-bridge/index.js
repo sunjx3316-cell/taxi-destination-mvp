@@ -193,7 +193,7 @@ async function geocode(query) {
 async function mapPreview(lng, lat, name) {
   const longitude = Number(lng), latitude = Number(lat);
   if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) throw new Error('该地点没有可预览的坐标。');
-  return staticMapImage({ location: `${longitude},${latitude}`, zoom: '16', size: '600*320', markers: `mid,,A:${longitude},${latitude}`, title: text(name).slice(0, 30) });
+  return staticMapImage({ location: `${longitude},${latitude}`, zoom: '16', size: '1024*640', markers: `mid,,A:${longitude},${latitude}`, title: text(name).slice(0, 30) });
 }
 
 async function getBoard(db, id) {

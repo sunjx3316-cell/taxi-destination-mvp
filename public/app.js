@@ -287,6 +287,9 @@ async function openInteractiveRouteMap(route) {
 }
 
 async function previewCandidate(candidate, card) {
+  // 高德 JS 底图在部分微信内置浏览器会只显示标记、不显示道路。
+  // 这里优先用服务端返回的高分辨率静态图，避免乘客面对空白地图。
+  if (/MicroMessenger/i.test(navigator.userAgent)) return openStaticCandidateMap(candidate, card);
   if (AMAP_JS_KEY && AMAP_JS_SECURITY_CODE && Number.isFinite(candidate.lat) && Number.isFinite(candidate.lng)) return openInteractiveCandidateMap(candidate, card);
   const holder = document.querySelector('#map-preview');
   holder.innerHTML = `<div class="map-preview loading"><strong>${esc(candidate.name)}</strong><span>正在加载地图预览…</span></div>`;
@@ -295,6 +298,26 @@ async function previewCandidate(candidate, card) {
     holder.innerHTML = `<div class="map-preview"><div class="map-preview-title"><strong>地图预览：${esc(candidate.name)}</strong><span>${esc(candidate.district || candidate.address)}</span></div><button type="button" class="map-zoom" aria-label="放大查看 ${esc(candidate.name)} 的地图"><img src="${map.imageDataUrl}" alt="${esc(candidate.name)} 的地图定位预览" /><span>点击放大确认位置</span></button></div>`;
     holder.querySelector('.map-zoom').onclick = () => openMapLightbox(map.imageDataUrl, candidate);
   } catch (error) { holder.innerHTML = `<p class="status error">地图预览暂不可用：${esc(error.message)}</p>`; }
+}
+
+async function openStaticCandidateMap(candidate, card) {
+  document.querySelector('#map-lightbox')?.remove();
+  const title = `确认地点：${candidate.name}`;
+  const lightbox = document.createElement('div');
+  lightbox.id = 'map-lightbox'; lightbox.className = 'map-lightbox';
+  lightbox.innerHTML = `<div class="map-lightbox-panel route-map-panel" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="map-lightbox-title"><div><strong>${esc(title)}</strong><span>${esc(candidate.district || candidate.address)}</span></div><button type="button" class="map-lightbox-close" aria-label="关闭地图">关闭</button></div><div class="candidate-static-map" id="candidate-static-map"><p>正在加载清晰地图…</p></div><div class="candidate-map-actions"><p>微信中已使用清晰定位图，核对地标与标记位置后确认即可。</p><button type="button" class="primary" id="confirm-map-candidate">确认这个地点</button></div></div>`;
+  const close = () => lightbox.remove();
+  lightbox.addEventListener('click', (event) => { if (event.target === lightbox) close(); });
+  lightbox.querySelector('.map-lightbox-close').onclick = close;
+  lightbox.querySelector('#confirm-map-candidate').onclick = () => { selectCandidate(candidate, card); close(); };
+  document.body.append(lightbox);
+  try {
+    const map = await request(`/api/map-preview?lng=${encodeURIComponent(candidate.lng)}&lat=${encodeURIComponent(candidate.lat)}&name=${encodeURIComponent(candidate.name)}`);
+    const target = lightbox.querySelector('#candidate-static-map');
+    target.innerHTML = `<img src="${map.imageDataUrl}" alt="${esc(candidate.name)} 的高德地图定位图" />`;
+  } catch (error) {
+    lightbox.querySelector('#candidate-static-map').innerHTML = `<p class="route-map-error">${esc(error.message || '地图暂不可用。')}</p>`;
+  }
 }
 
 async function openInteractiveCandidateMap(candidate, card) {
